@@ -71,3 +71,62 @@ access-prometheus:
 delete-monitoring:
 	helm uninstall kube-prometheus-stack -n monitoring || echo "Stack not found"
 	kubectl delete namespace monitoring || echo "Namespace not found"
+
+# ============================================
+# MONITORING WITH METRICS EXPORTERS
+# ============================================
+
+setup-metrics-exporters:
+	@echo "Deploying JMX and Spark metrics configurations..."
+	kubectl apply -f monitoring/kafka-jmx-config.yaml
+	kubectl apply -f monitoring/spark-metrics-config.yaml
+	kubectl apply -f monitoring/servicemonitors.yaml
+	@echo "Metrics exporters configured successfully!"
+
+deploy-kafka-with-metrics:
+	@echo "Deploying Kafka with JMX metrics exporter..."
+	kubectl delete statefulset kafka-broker --ignore-not-found=true
+	kubectl apply -f monitoring/kafka-broker-with-metrics.yaml
+	@echo "Waiting for Kafka broker pods to be ready..."
+	kubectl wait --for=condition=ready pod -l app=kafka-broker --timeout=300s
+	@echo "Kafka brokers with metrics deployed!"
+
+deploy-spark-with-metrics:
+	@echo "Deploying Spark with Prometheus metrics..."
+	kubectl delete deployment spark-master spark-worker --ignore-not-found=true
+	kubectl apply -f monitoring/spark-master-with-metrics.yaml
+	kubectl apply -f monitoring/spark-worker-with-metrics.yaml
+	@echo "Waiting for Spark pods to be ready..."
+	kubectl wait --for=condition=ready pod -l app=spark-master --timeout=300s
+	kubectl wait --for=condition=ready pod -l app=spark-worker --timeout=300s
+	@echo "Spark with metrics deployed!"
+
+setup-full-monitoring:
+	@echo "=========================================="
+	@echo "Setting up complete monitoring stack..."
+	@echo "=========================================="
+	$(MAKE) setup-monitoring
+	@echo ""
+	@echo "Configuring metrics exporters..."
+	$(MAKE) setup-metrics-exporters
+	@echo ""
+	@echo "Deploying Kafka with metrics..."
+	$(MAKE) deploy-kafka-with-metrics
+	@echo ""
+	@echo "Deploying Spark with metrics..."
+	$(MAKE) deploy-spark-with-metrics
+	@echo ""
+	@echo "=========================================="
+	@echo "Full monitoring stack deployed!"
+	@echo "=========================================="
+	@echo "Access Grafana: make access-grafana"
+	@echo "Access Prometheus: make access-prometheus"
+	@echo ""
+	@echo "Check Prometheus targets:"
+	@echo "  http://localhost:9090/targets"
+	@echo ""
+	@echo "You should see:"
+	@echo "  - kafka-broker-metrics"
+	@echo "  - spark-master-metrics"
+	@echo "  - spark-worker-metrics"
+	@echo "=========================================="

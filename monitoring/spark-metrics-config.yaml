@@ -1,0 +1,25 @@
+---
+# ConfigMap for Spark Metrics Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-metrics-config
+  namespace: default
+data:
+  metrics.properties: |
+    # Enable Prometheus Sink
+    *.sink.prometheus.class=org.apache.spark.metrics.sink.PrometheusServlet
+    *.sink.prometheus.path=/metrics/prometheus
+    *.source.jvm.class=org.apache.spark.metrics.source.JvmSource
+
+    # Master metrics
+    master.source.jvm.class=org.apache.spark.metrics.source.JvmSource
+
+    # Worker metrics
+    worker.source.jvm.class=org.apache.spark.metrics.source.JvmSource
+
+    # Driver metrics
+    driver.source.jvm.class=org.apache.spark.metrics.source.JvmSource
+
+    # Executor metrics
+    executor.source.jvm.class=org.apache.spark.metrics.source.JvmSource

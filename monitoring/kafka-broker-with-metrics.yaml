@@ -1,0 +1,178 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka-broker
+spec:
+  serviceName: "kafka-broker-service"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kafka-broker
+
+  template:
+    metadata:
+      labels:
+        app: kafka-broker
+    spec:
+      initContainers:
+        - name: init-broker
+          image: apache/kafka:3.8.0
+          imagePullPolicy: IfNotPresent
+          command: [ "/bin/bash","-c" ]
+          args:
+            - |
+              set -ex
+
+              CLUSTER_ID="laA2BR9-So-1wGxQEMI_EQ"
+
+              # Extract ordinal from pod name
+              ORDINAL=$(echo ${HOSTNAME} | awk -F- '{print $NF}')
+              NODE_ID=$((ORDINAL + 2))
+
+              echo "host = ${HOSTNAME}"
+              echo "My ordinal is ${ORDINAL}, so NODE_ID=${NODE_ID}"
+
+              THIS_DNS="${HOSTNAME}.kafka-broker-service"
+
+              # Create broker config with JMX enabled
+              cat > /var/lib/kafka/data/mybroker.properties <<EOF
+              process.roles=broker
+              node.id=${NODE_ID}
+
+              listeners=INTERNAL://:19092
+              listener.security.protocol.map=INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+              advertised.listeners=INTERNAL://${THIS_DNS}:19092
+
+              inter.broker.listener.name=INTERNAL
+              controller.listener.names=CONTROLLER
+              controller.quorum.voters=1@kafka-controller-0.kafka-controller-service:9093
+
+              log.dirs=/var/lib/kafka/data
+
+              num.partitions=3
+              offsets.topic.replication.factor=1
+              transaction.state.log.replication.factor=1
+              transaction.state.log.min.isr=1
+              auto.create.topics.enable=true
+              EOF
+
+              cat /var/lib/kafka/data/mybroker.properties
+
+              if [ ! -f /var/lib/kafka/data/meta.properties ]; then
+                echo "Formatting storage with CLUSTER_ID=${CLUSTER_ID} and NODE_ID=${NODE_ID}"
+                /opt/kafka/bin/kafka-storage.sh format \
+                  --cluster-id ${CLUSTER_ID} \
+                  --config /var/lib/kafka/data/mybroker.properties \
+                  --ignore-formatted
+              else
+                echo "meta.properties already exists, skip format"
+              fi
+
+              echo "Resulting meta.properties:"
+              cat /var/lib/kafka/data/meta.properties || true
+
+          volumeMounts:
+            - name: broker-data
+              mountPath: /var/lib/kafka/data
+
+      containers:
+        # Main Kafka Broker Container
+        - name: broker
+          image: apache/kafka:3.8.0
+          imagePullPolicy: IfNotPresent
+          env:
+            # Enable JMX on port 9999
+            - name: KAFKA_JMX_OPTS
+              value: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=127.0.0.1 -Dcom.sun.management.jmxremote.rmi.port=9999"
+            - name: JMX_PORT
+              value: "9999"
+
+          command: ["/bin/bash","-c"]
+          args:
+            - |
+              set -e
+              echo "start the broker using generated config"
+              exec /opt/kafka/bin/kafka-server-start.sh /var/lib/kafka/data/mybroker.properties
+
+          ports:
+            - containerPort: 19092
+              name: internal
+            - containerPort: 9999
+              name: jmx
+
+          volumeMounts:
+            - name: broker-data
+              mountPath: /var/lib/kafka/data
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+        # JMX Exporter Sidecar
+        - name: jmx-exporter
+          image: bitnami/jmx-exporter:0.20.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - java
+            - -jar
+            - jmx_prometheus_httpserver.jar
+            - "7071"
+            - /etc/jmx-exporter/kafka-broker.yml
+          ports:
+            - containerPort: 7071
+              name: jmx-metrics
+          volumeMounts:
+            - name: jmx-config
+              mountPath: /etc/jmx-exporter
+          env:
+            - name: SERVICE_PORT
+              value: "7071"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+      volumes:
+        - name: jmx-config
+          configMap:
+            name: kafka-jmx-config
+
+  volumeClaimTemplates:
+    - metadata:
+        name: broker-data
+        labels:
+          app: kafka-broker
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+---
+# Updated Service with metrics port
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-broker-service
+  labels:
+    app: kafka-broker
+spec:
+  clusterIP: None
+  selector:
+    app: kafka-broker
+  ports:
+    - name: internal
+      port: 19092
+      targetPort: 19092
+      protocol: TCP
+    - name: jmx-metrics
+      port: 7071
+      targetPort: 7071
+      protocol: TCP

@@ -1,0 +1,67 @@
+---
+# ServiceMonitor for Kafka Brokers
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-broker-metrics
+  namespace: default
+  labels:
+    app: kafka-broker
+spec:
+  selector:
+    matchLabels:
+      app: kafka-broker
+  endpoints:
+    - port: jmx-metrics
+      path: /metrics
+      interval: 30s
+
+---
+# ServiceMonitor for Kafka Controller
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-controller-metrics
+  namespace: default
+  labels:
+    app: kafka-controller
+spec:
+  selector:
+    matchLabels:
+      app: kafka-controller
+  endpoints:
+    - port: jmx-metrics
+      path: /metrics
+      interval: 30s
+
+---
+# ServiceMonitor for Spark Master
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: spark-master-metrics
+  namespace: default
+  labels:
+    app: spark-master
+spec:
+  selector:
+    matchLabels:
+      app: spark-master
+  endpoints:
+    - port: metrics
+      path: /metrics/prometheus
+      interval: 30s
+
+---
+# ServiceMonitor for Spark Workers
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: spark-worker-metrics
+  namespace: default
+  labels:
+    app: spark-worker
+  endpoints:
+    - port: metrics
+      path: /metrics/prometheus
+      interval: 30s

@@ -1,0 +1,38 @@
+---
+# JMX Exporter Configuration for Kafka
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-jmx-config
+  namespace: default
+data:
+  kafka-broker.yml: |
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+    whitelistObjectNames:
+      # Broker metrics
+      - kafka.server:type=BrokerTopicMetrics,name=*
+      - kafka.server:type=ReplicaManager,name=*
+      - kafka.server:type=KafkaRequestHandlerPool,name=*
+      - kafka.network:type=RequestMetrics,name=*,request=*
+      - kafka.network:type=Processor,name=*,networkProcessor=*
+      - kafka.controller:type=KafkaController,name=*
+      - kafka.server:type=ReplicaFetcherManager,name=*
+      - kafka.log:type=LogFlushStats,name=*
+      # JVM metrics
+      - java.lang:type=Memory
+      - java.lang:type=GarbageCollector,name=*
+      - java.lang:type=Threading
+      - java.lang:type=OperatingSystem
+    rules:
+      - pattern: kafka.server<type=(.+), name=(.+)><>(\w+)
+        name: kafka_server_$1_$2_$3
+        type: GAUGE
+      - pattern: kafka.network<type=(.+), name=(.+), request=(.+)><>(\w+)
+        name: kafka_network_$1_$2_$4
+        labels:
+          request: "$3"
+        type: GAUGE
+      - pattern: kafka.controller<type=(.+), name=(.+)><>(\w+)
+        name: kafka_controller_$1_$2_$3
+        type: GAUGE
