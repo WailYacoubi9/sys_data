@@ -51,7 +51,7 @@ setup-monitoring:
 	kubectl create namespace monitoring || echo "Namespace already exists"
 	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || echo "Repo already added"
 	helm repo update
-	helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack --namespace monitoring --set prometheus.prometheusSpec.retention=30d --set grafana.adminPassword=admin --set grafana.service.type=NodePort --wait --timeout=10m
+	helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack --namespace monitoring --set prometheus.prometheusSpec.retention=30d --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false --set grafana.adminPassword=admin --set grafana.service.type=NodePort --wait --timeout=10m
 	@echo "=========================================="
 	@echo "Monitoring deployed successfully!"
 	@echo "Access Grafana: make access-grafana"
