@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: python-producer
+spec:
+  nodeName: minikube 
+  containers:
+    - name: mycontainer
+      image: python:3.11  #debian based, has bash
+      securityContext:
+        runAsUser: 0
+      command:
+      - /bin/bash
+      - -c
+      - |
+        echo ${POD_NAME}
+        apt-get update && apt-get install -y kcat
+        apt-get install -y dnsutils
+        apt-get install -y nano
+        wget https://mega.nz/linux/repo/Debian_13/amd64/megacmd-Debian_13_amd64.deb && apt install -y "$PWD/megacmd-Debian_13_amd64.deb"
+        pip install confluent-kafka pandas
+        sleep 3600
+#      volumeMounts:
+#        - name: host-volume
+#          mountPath: /app
+#  volumes:
+#    - name: host-volume
+#      hostPath:
+#        path: /mnt/python_producer
+#        type: Directory
