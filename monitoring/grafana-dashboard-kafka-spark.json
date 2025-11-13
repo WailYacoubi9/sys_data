@@ -1,0 +1,162 @@
+{
+  "dashboard": {
+    "title": "Kafka + Spark Pipeline Monitoring",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Pod CPU Usage",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"default\"}[5m])) by (pod)",
+            "legendFormat": "{{pod}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Pod Memory Usage (MB)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "sum(container_memory_usage_bytes{namespace=\"default\"}) by (pod) / 1024 / 1024",
+            "legendFormat": "{{pod}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decmbytes"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Kafka Network I/O (MB/s)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"default\",pod=~\"kafka-broker.*\"}[5m])) / 1024 / 1024",
+            "legendFormat": "Receive",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"default\",pod=~\"kafka-broker.*\"}[5m])) / 1024 / 1024",
+            "legendFormat": "Transmit",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "MBs"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Spark Network I/O (MB/s)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"default\",pod=~\"spark.*\"}[5m])) / 1024 / 1024",
+            "legendFormat": "Receive",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"default\",pod=~\"spark.*\"}[5m])) / 1024 / 1024",
+            "legendFormat": "Transmit",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "MBs"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Pod Restarts",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"default\"}) by (pod)",
+            "legendFormat": "{{pod}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 3, "color": "yellow" },
+                { "value": 5, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Kafka Disk Writes (MB/s)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 6, "x": 6, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(rate(container_fs_writes_bytes_total{namespace=\"default\",pod=~\"kafka-broker.*\"}[5m])) by (pod) / 1024 / 1024",
+            "legendFormat": "{{pod}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "MBs"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "All Pods Network Traffic (Bytes/s)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "targets": [
+          {
+            "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"default\"}[5m])) by (pod)",
+            "legendFormat": "{{pod}} RX",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"default\"}[5m])) by (pod)",
+            "legendFormat": "{{pod}} TX",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "Bps"
+          }
+        }
+      }
+    ],
+    "refresh": "10s",
+    "time": {
+      "from": "now-30m",
+      "to": "now"
+    },
+    "timezone": "browser",
+    "schemaVersion": 36,
+    "version": 1
+  }
+}
