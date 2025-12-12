@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-jmx-exporter-config
+  namespace: default
+data:
+  config.yml: |
+    ---
+    lowercaseOutputName: true
+    lowercaseOutputLabelNames: true
+
+    # Whitelist all JMX beans by default
+    whitelistObjectNames:
+      - kafka.log:type=Log,name=Size,topic=*,partition=*
+      - kafka.log:type=Log,name=LogEndOffset,topic=*,partition=*
+      - kafka.log:type=Log,name=LogStartOffset,topic=*,partition=*
+      - kafka.server:type=BrokerTopicMetrics,name=MessagesInPerSec
+      - kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec
+      - kafka.server:type=BrokerTopicMetrics,name=BytesOutPerSec
+      - kafka.server:type=ReplicaManager,name=*
+      - kafka.network:type=RequestMetrics,name=RequestsPerSec,request=*
+      - java.lang:type=Memory
+      - java.lang:type=GarbageCollector,name=*
+
+    rules:
+      # ============================================
+      # Kafka Log Metrics (Messages per Topic/Partition)
+      # ============================================
+
+      # Log size in bytes per topic and partition
+      - pattern: kafka.log<type=Log, name=Size, topic=(.+), partition=(.+)><>Value
+        name: kafka_log_log_size
+        type: GAUGE
+        labels:
+          topic: "$1"
+          partition: "$2"
+        help: "Size of the log in bytes for a given topic and partition"
+
+      # Log end offset (latest offset) per topic and partition
+      - pattern: kafka.log<type=Log, name=LogEndOffset, topic=(.+), partition=(.+)><>Value
+        name: kafka_log_logendoffset
+        type: GAUGE
+        labels:
+          topic: "$1"
+          partition: "$2"
+        help: "The log end offset (LEO) - the offset of the last message written to the log"
+
+      # Log start offset (earliest offset) per topic and partition
+      - pattern: kafka.log<type=Log, name=LogStartOffset, topic=(.+), partition=(.+)><>Value
+        name: kafka_log_logstartoffset
+        type: GAUGE
+        labels:
+          topic: "$1"
+          partition: "$2"
+        help: "The log start offset - the earliest offset available in the log"
+
+      # ============================================
+      # Broker Topic Metrics
+      # ============================================
+
+      # Messages in per second (total across all topics)
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec><>Count
+        name: kafka_server_messages_in_total
+        type: COUNTER
+        help: "Total number of messages received by the broker"
+
+      # Bytes in per second
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec><>Count
+        name: kafka_server_bytes_in_total
+        type: COUNTER
+        help: "Total bytes received by the broker"
+
+      # Bytes out per second
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesOutPerSec><>Count
+        name: kafka_server_bytes_out_total
+        type: COUNTER
+        help: "Total bytes sent by the broker"
+
+      # Per-topic messages in
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec, topic=(.+)><>Count
+        name: kafka_server_topic_messages_in_total
+        type: COUNTER
+        labels:
+          topic: "$1"
+        help: "Total messages received for a specific topic"
+
+      # Per-topic bytes in
+      - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec, topic=(.+)><>Count
+        name: kafka_server_topic_bytes_in_total
+        type: COUNTER
+        labels:
+          topic: "$1"
+        help: "Total bytes received for a specific topic"
+
+      # ============================================
+      # Replica Manager Metrics
+      # ============================================
+
+      - pattern: kafka.server<type=ReplicaManager, name=(.+)><>Value
+        name: kafka_server_replicamanager_$1
+        type: GAUGE
+        help: "Replica manager metric: $1"
+
+      # ============================================
+      # Request Metrics
+      # ============================================
+
+      - pattern: kafka.network<type=RequestMetrics, name=RequestsPerSec, request=(.+)><>Count
+        name: kafka_network_requests_total
+        type: COUNTER
+        labels:
+          request: "$1"
+        help: "Total requests by type"
+
+      # ============================================
+      # JVM Memory Metrics
+      # ============================================
+
+      - pattern: java.lang<type=Memory><HeapMemoryUsage>(\w+)
+        name: jvm_memory_heap_$1
+        type: GAUGE
+        help: "JVM heap memory usage: $1"
+
+      - pattern: java.lang<type=Memory><NonHeapMemoryUsage>(\w+)
+        name: jvm_memory_nonheap_$1
+        type: GAUGE
+        help: "JVM non-heap memory usage: $1"
+
+      # ============================================
+      # JVM Garbage Collection
+      # ============================================
+
+      - pattern: java.lang<type=GarbageCollector, name=(.+)><>CollectionCount
+        name: jvm_gc_collection_count
+        type: COUNTER
+        labels:
+          gc: "$1"
+        help: "GC collection count"
+
+      - pattern: java.lang<type=GarbageCollector, name=(.+)><>CollectionTime
+        name: jvm_gc_collection_time_ms
+        type: COUNTER
+        labels:
+          gc: "$1"
+        help: "GC collection time in milliseconds"

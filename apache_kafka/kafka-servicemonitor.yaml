@@ -1,0 +1,52 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-broker-metrics
+  namespace: monitoring
+  labels:
+    # CRITICAL: This label must match the prometheus operator's serviceMonitorSelector
+    release: kube-prometheus-stack
+    app: kafka-broker
+spec:
+  # Select the Kafka broker service
+  selector:
+    matchLabels:
+      app: kafka-broker
+
+  # Look for the service in the default namespace
+  namespaceSelector:
+    matchNames:
+      - default
+
+  # Scrape configuration
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+      scheme: http
+
+      # Relabeling to add useful labels
+      relabelings:
+        # Add the pod name as a label
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+          action: replace
+
+        # Add the namespace as a label
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+          action: replace
+
+        # Add broker ID from pod name (kafka-broker-0 -> broker_id=0)
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          regex: 'kafka-broker-(\d+)'
+          targetLabel: broker_id
+          replacement: '$1'
+          action: replace
+
+      # Metric relabeling (applied after scraping)
+      metricRelabelings:
+        # Keep only kafka and jvm metrics
+        - sourceLabels: [__name__]
+          regex: '(kafka_.*|jvm_.*)'
+          action: keep
