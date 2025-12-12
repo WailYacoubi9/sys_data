@@ -25,6 +25,13 @@ launch_producer:
 	# keep it running to continuously produce messages to Kafka
 	kubectl exec -it python-producer -- python3 /producer.py
 
+launch_producer_alt:
+	# Alternative method using stdin to avoid kubectl cp timeouts
+	@echo "Copying producer.py via stdin..."
+	@cat python_producer/producer.py | kubectl exec -i python-producer -- sh -c 'cat > /producer.py'
+	@echo "Launching producer..."
+	kubectl exec -it python-producer -- python3 /producer.py
+
 submit_spark_job:
 	#copy the spark_job.py into the spark-client pod
 	kubectl cp spark/spark_job.py spark-client-0:/opt/spark/work-dir/spark_job.py
@@ -35,6 +42,14 @@ submit_spark_job:
 	#may take a while to execute (download dependencies, connect to master, dag scheduling, etc)
 	# it will process new message as they arrive in Kafka topic
 	# if no more message, it will just wait for new messages
+	kubectl exec spark-client-0 -- /bin/bash /opt/spark/work-dir/spark_submit.sh
+
+submit_spark_job_alt:
+	# Alternative method using tar + stdin to avoid kubectl cp timeouts
+	@echo "Copying Spark files via tar+stdin..."
+	@cd spark && tar czf - spark_job.py model_utils.py spark_submit.sh pretrained_models/ | \
+		kubectl exec -i spark-client-0 -- tar xzf - -C /opt/spark/work-dir/
+	@echo "Submitting Spark job..."
 	kubectl exec spark-client-0 -- /bin/bash /opt/spark/work-dir/spark_submit.sh
 
 stop-minikube:
