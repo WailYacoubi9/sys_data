@@ -18,6 +18,23 @@ spec:
         app: kafka-broker
     spec:
       initContainers:
+        # Download JMX Prometheus Exporter JAR
+        - name: download-jmx-exporter
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /opt/jmx-exporter
+              echo "Downloading JMX Prometheus Exporter..."
+              wget -O /opt/jmx-exporter/jmx_prometheus_javaagent.jar \
+                https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.20.0/jmx_prometheus_javaagent-0.20.0.jar
+              echo "JMX Exporter downloaded successfully"
+              ls -lh /opt/jmx-exporter/
+          volumeMounts:
+            - name: jmx-exporter
+              mountPath: /opt/jmx-exporter
+
         - name: init-broker
           image: apache/kafka:3.8.0
           imagePullPolicy: IfNotPresent
@@ -98,13 +115,23 @@ spec:
           image: apache/kafka:3.8.0
           imagePullPolicy: IfNotPresent
 
+          # JMX and Prometheus Exporter configuration
+          env:
+            - name: KAFKA_JMX_PORT
+              value: "9999"
+            - name: KAFKA_JMX_HOSTNAME
+              value: "0.0.0.0"
+            - name: KAFKA_OPTS
+              value: "-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=5556:/opt/jmx-exporter/config.yml"
 
           command: ["/bin/bash","-c"]
           args:
             - |
               set -e
               echo "start the broker using generated config"
-              
+              echo "JMX enabled on port 9999"
+              echo "Prometheus metrics exposed on port 5556"
+
               exec /opt/kafka/bin/kafka-server-start.sh /var/lib/kafka/data/mybroker.properties
 
 
@@ -113,10 +140,18 @@ spec:
           ports:
             - containerPort: 19092
               name: internal
+            - containerPort: 5556
+              name: metrics
+              protocol: TCP
 
           volumeMounts:
             - name: broker-data
               mountPath: /var/lib/kafka/data
+            - name: jmx-exporter
+              mountPath: /opt/jmx-exporter
+            - name: jmx-config
+              mountPath: /opt/jmx-exporter/config.yml
+              subPath: config.yml
 
           resources:
             requests:
@@ -125,6 +160,14 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+
+      # Volumes for JMX Exporter
+      volumes:
+        - name: jmx-exporter
+          emptyDir: {}
+        - name: jmx-config
+          configMap:
+            name: kafka-jmx-exporter-config
 
   volumeClaimTemplates:
     - metadata:
@@ -145,6 +188,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: kafka-broker-service
+  labels:
+    app: kafka-broker
 spec:
   clusterIP: None
   selector:
@@ -153,4 +198,8 @@ spec:
     - name: internal
       port: 19092
       targetPort: 19092
+      protocol: TCP
+    - name: metrics
+      port: 5556
+      targetPort: 5556
       protocol: TCP

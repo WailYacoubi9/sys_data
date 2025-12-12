@@ -19,7 +19,7 @@ spec:
         apt-get install -y nano
         wget https://mega.nz/linux/repo/Debian_13/amd64/megacmd-Debian_13_amd64.deb && apt install -y "$PWD/megacmd-Debian_13_amd64.deb"
         pip install confluent-kafka pandas
-        sleep 3600
+        sleep infinity
 #      volumeMounts:
 #        - name: host-volume
 #          mountPath: /app
