@@ -169,3 +169,191 @@ test-kafka-metrics-query:
 	@echo "   jvm_memory_heap_used{job=\"kafka-broker-metrics\"}"
 	@echo ""
 	@echo "Run 'make access-prometheus' to open Prometheus UI"
+# ============================================
+# SPARK METRICS TARGETS (ML Attack Detection)
+# ============================================
+
+setup-spark-metrics:
+	@echo "📊 Setting up Spark metrics monitoring..."
+	@echo "Step 1: Installing prometheus_client in Spark pod..."
+	kubectl exec spark-client-0 -- pip install prometheus_client || echo "Already installed"
+	@echo "Step 2: Creating ServiceMonitor for Spark metrics..."
+	kubectl apply -f spark/spark-metrics-servicemonitor.yaml
+	@echo "Step 3: Verifying service..."
+	kubectl get svc spark-client-metrics || echo "Service will be created after job starts"
+	@echo "=========================================="
+	@echo "✅ Spark metrics setup complete!"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Deploy Spark job with metrics: make deploy-spark-job-with-metrics"
+	@echo "  2. Wait 30 seconds for Prometheus to scrape"
+	@echo "  3. Verify metrics: make verify-spark-metrics"
+	@echo "  4. Import dashboards: make import-spark-dashboards"
+	@echo "=========================================="
+
+deploy-spark-job-with-metrics:
+	@echo "🚀 Deploying Spark job with Prometheus metrics..."
+	@echo "Copying files to spark-client pod..."
+	kubectl cp spark/spark_job_with_metrics.py spark-client-0:/opt/spark/work-dir/spark_job.py
+	kubectl cp spark/model_utils_with_metrics.py spark-client-0:/opt/spark/work-dir/model_utils.py
+	kubectl cp spark/pretrained_models/ spark-client-0:/opt/spark/work-dir/pretrained_models/
+	kubectl cp spark/spark_submit.sh spark-client-0:/opt/spark/work-dir/spark_submit.sh
+	@echo "Installing prometheus_client..."
+	kubectl exec spark-client-0 -- pip install prometheus_client
+	@echo "✅ Files deployed! Ready to submit job."
+	@echo ""
+	@echo "To start the job, run:"
+	@echo "  kubectl exec spark-client-0 -- /bin/bash /opt/spark/work-dir/spark_submit.sh"
+
+verify-spark-metrics:
+	@echo "🔍 Verifying Spark metrics..."
+	@echo ""
+	@echo "=== ServiceMonitor Status ==="
+	kubectl get servicemonitor -n monitoring spark-client-metrics || echo "❌ ServiceMonitor not found!"
+	@echo ""
+	@echo "=== Spark Client Service ==="
+	kubectl get svc spark-client-metrics || echo "⚠️  Service not found - job may not be running"
+	@echo ""
+	@echo "=== Testing Metrics Endpoint ==="
+	@echo "Attempting to fetch metrics from spark-client-0..."
+	@kubectl exec spark-client-0 -- wget -qO- localhost:8000/metrics 2>/dev/null | grep spark_predictions_total || echo "⚠️  No metrics yet - is the Spark job running?"
+	@echo ""
+	@echo "=== Sample Metrics to Check ==="
+	@kubectl exec spark-client-0 -- wget -qO- localhost:8000/metrics 2>/dev/null | grep -E "spark_predictions_total|spark_malicious_rate|spark_model_inference" | head -10 || echo "No metrics available yet"
+	@echo ""
+	@echo "✅ If you see metrics above, monitoring is working!"
+	@echo "   Next: Check Prometheus targets at http://localhost:9090/targets"
+	@echo "   Run: make access-prometheus"
+
+import-spark-dashboards:
+	@echo "📈 Importing Spark metrics dashboards to Grafana..."
+	@echo ""
+	@echo "Dashboard 1: Security Overview (Attack Detection)"
+	kubectl create configmap security-overview-dashboard -n monitoring \
+		--from-file=monitoring/security-overview-dashboard.json \
+		--dry-run=client -o yaml | kubectl apply -f -
+	@echo "✅ Security Overview dashboard created"
+	@echo ""
+	@echo "Dashboard 2: System Health (Performance Monitoring)"
+	kubectl create configmap system-health-dashboard -n monitoring \
+		--from-file=monitoring/system-health-dashboard.json \
+		--dry-run=client -o yaml | kubectl apply -f -
+	@echo "✅ System Health dashboard created"
+	@echo ""
+	@echo "=========================================="
+	@echo "📊 To import dashboards in Grafana UI:"
+	@echo "  1. Run: make access-grafana"
+	@echo "  2. Open http://localhost:3000 (admin/admin)"
+	@echo "  3. Go to: Dashboards → Import"
+	@echo "  4. Click: Upload JSON file"
+	@echo "  5. Select: monitoring/security-overview-dashboard.json"
+	@echo "  6. Select: monitoring/system-health-dashboard.json"
+	@echo "  7. Click: Import"
+	@echo ""
+	@echo "Or use the JSON directly from the ConfigMaps created above"
+	@echo "=========================================="
+
+test-spark-metrics-queries:
+	@echo "🧪 Testing Prometheus queries for Spark metrics..."
+	@echo ""
+	@echo "Test these queries in Prometheus UI (http://localhost:9090):"
+	@echo ""
+	@echo "1. Total malicious predictions:"
+	@echo "   spark_predictions_total{prediction=\"malicious\"}"
+	@echo ""
+	@echo "2. Attack rate per second:"
+	@echo "   rate(spark_predictions_total{prediction=\"malicious\"}[1m])"
+	@echo ""
+	@echo "3. Malicious traffic percentage:"
+	@echo "   (spark_predictions_total{prediction=\"malicious\"} / "
+	@echo "    (spark_predictions_total{prediction=\"malicious\"} + "
+	@echo "     spark_predictions_total{prediction=\"benign\"})) * 100"
+	@echo ""
+	@echo "4. ML model inference P99 latency:"
+	@echo "   histogram_quantile(0.99, spark_model_inference_duration_seconds_bucket)"
+	@echo ""
+	@echo "5. Kafka consumer lag:"
+	@echo "   spark_kafka_consumer_lag_records"
+	@echo ""
+	@echo "6. Batch processing duration P95:"
+	@echo "   histogram_quantile(0.95, spark_streaming_batch_duration_seconds_bucket)"
+	@echo ""
+	@echo "Run 'make access-prometheus' to open Prometheus UI"
+
+monitor-attacks-live:
+	@echo "🔴 Monitoring live attack detection..."
+	@echo "Press Ctrl+C to stop"
+	@echo "=========================================="
+	@while true; do \
+		kubectl exec spark-client-0 -- wget -qO- localhost:8000/metrics 2>/dev/null | \
+		grep -E "spark_predictions_total|spark_malicious_rate" | \
+		awk '{print strftime("%H:%M:%S"), $$0}'; \
+		sleep 5; \
+	done
+
+# ============================================
+# COMPLETE MONITORING SETUP (ALL-IN-ONE)
+# ============================================
+
+setup-complete-monitoring:
+	@echo "🚀 Setting up COMPLETE monitoring stack..."
+	@echo "This will setup: Prometheus, Grafana, Kafka metrics, Spark metrics"
+	@echo "=========================================="
+	@echo ""
+	@echo "Step 1/4: Setting up Prometheus & Grafana..."
+	@$(MAKE) setup-monitoring
+	@echo ""
+	@echo "Step 2/4: Setting up Kafka monitoring..."
+	@$(MAKE) setup-kafka-monitoring
+	@echo ""
+	@echo "Step 3/4: Setting up Spark metrics..."
+	@$(MAKE) setup-spark-metrics
+	@echo ""
+	@echo "Step 4/4: Importing all dashboards..."
+	@$(MAKE) import-grafana-dashboard
+	@$(MAKE) import-spark-dashboards
+	@echo ""
+	@echo "=========================================="
+	@echo "✅ COMPLETE MONITORING STACK READY!"
+	@echo ""
+	@echo "Access points:"
+	@echo "  • Grafana:    make access-grafana (http://localhost:3000)"
+	@echo "  • Prometheus: make access-prometheus (http://localhost:9090)"
+	@echo ""
+	@echo "Available dashboards:"
+	@echo "  1. Kafka Messages Monitoring"
+	@echo "  2. Security Overview (Attack Detection)"
+	@echo "  3. System Health (Spark Performance)"
+	@echo ""
+	@echo "Next: Deploy Spark job with metrics"
+	@echo "  make deploy-spark-job-with-metrics"
+	@echo "=========================================="
+
+# ============================================
+# HELPFUL ALIASES
+# ============================================
+
+metrics-help:
+	@echo "📊 Spark Metrics Monitoring - Quick Reference"
+	@echo "=========================================="
+	@echo ""
+	@echo "Setup Commands:"
+	@echo "  make setup-spark-metrics          - Configure Spark metrics monitoring"
+	@echo "  make deploy-spark-job-with-metrics - Deploy Spark job with metrics"
+	@echo "  make setup-complete-monitoring    - Setup everything (Kafka + Spark)"
+	@echo ""
+	@echo "Verification Commands:"
+	@echo "  make verify-spark-metrics         - Check if metrics are working"
+	@echo "  make test-spark-metrics-queries   - Show example Prometheus queries"
+	@echo "  make monitor-attacks-live         - Watch attack detection in real-time"
+	@echo ""
+	@echo "Dashboard Commands:"
+	@echo "  make import-spark-dashboards      - Import Grafana dashboards"
+	@echo "  make access-grafana               - Open Grafana UI"
+	@echo "  make access-prometheus            - Open Prometheus UI"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  See METRICS_IMPLEMENTATION_GUIDE.md for full guide"
+	@echo ""
+	@echo "=========================================="
+

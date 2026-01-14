@@ -1,0 +1,46 @@
+---
+# Service to expose Spark metrics endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-client-metrics
+  labels:
+    app: spark-client
+    metrics: prometheus
+spec:
+  selector:
+    app: spark-client
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP
+
+---
+# ServiceMonitor for Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: spark-client-metrics
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack  # CRITICAL: Must match Prometheus operator label selector
+spec:
+  # Select services in default namespace (where Spark runs)
+  namespaceSelector:
+    matchNames:
+      - default
+
+  # Select the spark-client-metrics service
+  selector:
+    matchLabels:
+      app: spark-client
+      metrics: prometheus
+
+  # Define scrape endpoint
+  endpoints:
+    - port: metrics
+      interval: 30s      # Scrape every 30 seconds
+      path: /metrics
+      scheme: http
